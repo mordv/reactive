@@ -2,20 +2,14 @@ package ru.alexmww.reactivewebflow
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.http.MediaType
 import org.springframework.http.MediaType.APPLICATION_JSON
 import org.springframework.http.MediaType.TEXT_EVENT_STREAM
 import org.springframework.stereotype.Component
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.awaitBody
 import org.springframework.web.reactive.function.client.awaitExchange
@@ -28,38 +22,6 @@ class ReactivewebflowApplication
 
 fun main(args: Array<String>) {
     runApplication<ReactivewebflowApplication>(*args)
-}
-
-@Configuration
-class RouterConfiguration(private val handler: Handler) {
-
-    @Bean
-    fun route() = coRouter {
-        GET("/") { ok().renderAndAwait("index") }
-        "/api".nest {
-            accept(TEXT_EVENT_STREAM).nest {
-                GET("/data/{amount}", handler::handleRandomStream)
-            }
-//            accept(APPLICATION_JSON).nest {
-//                GET("/data", handler::handleRandomStream)
-//            }
-        }
-    }
-
-}
-
-@RestController
-@RequestMapping("/api")
-class Controller(private val client: Client) {
-    @GetMapping("/random")
-    suspend fun getRandom(): ResponseFromTwoApis {
-        return client.getRandomData();
-    }
-
-    @GetMapping("/stream/{amount}", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
-    fun stream(@PathVariable amount: Int): Flow<ResponseFromTwoApis> {
-        return client.getRandomDataStream(amount)
-    }
 }
 
 @Configuration
@@ -81,22 +43,38 @@ class ApiConfiguration {
     }
 }
 
+@Configuration
+class RouterConfiguration(private val handler: Handler) {
+
+    @Bean
+    fun route() = coRouter {
+        GET("/") { ok().bodyValueAndAwait("Hello from hardcore Kotlin web shit!") }
+        "/api".nest {
+            accept(TEXT_EVENT_STREAM).nest {
+                GET("/data/{amount}", handler::handleRandomStream)
+            }
+            accept(APPLICATION_JSON).nest {
+                GET("/data", handler::handleRandom)
+            }
+        }
+    }
+}
+
 @Component
 class Handler(private val client: Client) {
-//     suspend fun handleRandom(serverRequest: ServerRequest) =
-//            ok().bodyAndAwait(client.getRandomData())
+    suspend fun handleRandom(serverRequest: ServerRequest) = ok().bodyValueAndAwait(client.getRandomData())
+
 
     suspend fun handleRandomStream(serverRequest: ServerRequest) =
             ok().sse().bodyAndAwait(client.getRandomDataStream(serverRequest.pathVariable("amount").toInt()))
 }
-
 
 @Component
 class Client(private val commentClient: CommentClient, private val postClient: PostClient) {
 
     fun getRandomDataStream(amount: Int) = flow {
         for (i in 1..amount) {
-            println("invoke getData() $i times")
+            println("invoked getData() $i times")
             emit(getRandomData())
         }
     }
@@ -120,7 +98,7 @@ class CommentClient(private val webClient: WebClient) {
     suspend fun getComment(commentId: Int): Comment {
         return webClient.get()
                 .uri("/${commentId}")
-                .accept(MediaType.APPLICATION_JSON)
+                .accept(APPLICATION_JSON)
                 .awaitExchange()
                 .awaitBody()
     }
@@ -133,7 +111,7 @@ class PostClient(private val webClient: WebClient) {
     suspend fun getPost(postId: Int): Post {
         return webClient.get()
                 .uri("/${postId}")
-                .accept(MediaType.APPLICATION_JSON)
+                .accept(APPLICATION_JSON)
                 .awaitExchange()
                 .awaitBody()
     }
