@@ -9,6 +9,8 @@ import org.springframework.boot.runApplication
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.http.MediaType.APPLICATION_JSON
+import org.springframework.http.MediaType.TEXT_EVENT_STREAM
 import org.springframework.stereotype.Component
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.awaitBody
 import org.springframework.web.reactive.function.client.awaitExchange
+import org.springframework.web.reactive.function.server.*
+import org.springframework.web.reactive.function.server.ServerResponse.ok
 import kotlin.random.Random
 
 @SpringBootApplication
@@ -26,29 +30,35 @@ fun main(args: Array<String>) {
     runApplication<ReactivewebflowApplication>(*args)
 }
 
-//@Configuration
-//class Controller(private val client: Client) {
-//
-//    @Bean
-//    fun route() = router {
-//        GET("/") {ok().render("index")}
-//        "/api".nest {
-//            GET("/random", client::getData)
-//        }
-//    }
-//}
+@Configuration
+class RouterConfiguration(private val handler: Handler) {
+
+    @Bean
+    fun route() = coRouter {
+        GET("/") { ok().renderAndAwait("index") }
+        "/api".nest {
+            accept(TEXT_EVENT_STREAM).nest {
+                GET("/data/{amount}", handler::handleRandomStream)
+            }
+//            accept(APPLICATION_JSON).nest {
+//                GET("/data", handler::handleRandomStream)
+//            }
+        }
+    }
+
+}
 
 @RestController
 @RequestMapping("/api")
 class Controller(private val client: Client) {
     @GetMapping("/random")
     suspend fun getRandom(): ResponseFromTwoApis {
-        return client.getData();
+        return client.getRandomData();
     }
 
     @GetMapping("/stream/{amount}", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun stream(@PathVariable amount: Int): Flow<ResponseFromTwoApis> {
-        return client.getDataStream(amount)
+        return client.getRandomDataStream(amount)
     }
 }
 
@@ -71,18 +81,27 @@ class ApiConfiguration {
     }
 }
 
+@Component
+class Handler(private val client: Client) {
+//     suspend fun handleRandom(serverRequest: ServerRequest) =
+//            ok().bodyAndAwait(client.getRandomData())
+
+    suspend fun handleRandomStream(serverRequest: ServerRequest) =
+            ok().sse().bodyAndAwait(client.getRandomDataStream(serverRequest.pathVariable("amount").toInt()))
+}
+
 
 @Component
 class Client(private val commentClient: CommentClient, private val postClient: PostClient) {
 
-    fun getDataStream(amount: Int) = flow {
+    fun getRandomDataStream(amount: Int) = flow {
         for (i in 1..amount) {
             println("invoke getData() $i times")
-            emit(getData())
+            emit(getRandomData())
         }
     }
 
-    suspend fun getData() = coroutineScope {
+    suspend fun getRandomData() = coroutineScope {
         val comment = async {
             println("getting comment")
             commentClient.getComment(Random.nextInt(500))
