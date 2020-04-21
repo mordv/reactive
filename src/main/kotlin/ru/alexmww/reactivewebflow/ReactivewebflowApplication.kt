@@ -48,7 +48,7 @@ class Controller(private val client: Client) {
 
     @GetMapping("/stream/{amount}", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun stream(@PathVariable amount: Int): Flow<ResponseFromTwoApis> {
-        return client.get(amount)
+        return client.getDataStream(amount)
     }
 }
 
@@ -75,9 +75,8 @@ class ApiConfiguration {
 @Component
 class Client(private val commentClient: CommentClient, private val postClient: PostClient) {
 
-    fun get(amount: Int) = flow {
+    fun getDataStream(amount: Int) = flow {
         for (i in 1..amount) {
-//            delay(100)
             println("invoke getData() $i times")
             emit(getData())
         }
